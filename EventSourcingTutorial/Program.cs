@@ -9,12 +9,12 @@ var studentId = Guid.Parse("d1b0b3f4-3b3b-4b3b-8b3b-3b3b3b3b3b3b");
 var studentCreated = new StudentCreated
 {
     StudentId = studentId,
-    FullName = "Alexei Alayo Rondon",
-    Email = "alexei.alayo@gmail.com",
-    DateOfBirth = new DateTime(1990, 1, 1)
+    FullName = "Yunior Alayo Rondon",
+    Email = "yunior.alayo@gmail.com",
+    DateOfBirth = new DateTime(1986, 1, 1)
 };
 
-studentDatabase.Append(studentCreated);
+await studentDatabase.AppendAsync(studentCreated);
 
 var studentEnrolled = new StudentEnrolled
 {
@@ -22,19 +22,19 @@ var studentEnrolled = new StudentEnrolled
     CourseName = "From Zero to Hero: Rest APIs in .NET"
 };
 
-studentDatabase.Append(studentEnrolled);
+await studentDatabase.AppendAsync(studentEnrolled);
 
 var studentUpdated = new StudentUpdated
 {
     StudentId = studentId,
-    Email = "alexei.alayo@gmail.com",
-    FullName = "Nick Chapsas",
+    Email = "yuninho2005@gmail.com",
+    FullName = "Yuninho Pernambucano",
 };
 
-studentDatabase.Append(studentUpdated);
+await studentDatabase.AppendAsync(studentUpdated);
 
-var student = studentDatabase.GetStudent(studentId);
+var student = await studentDatabase.GetStudentAsync(studentId);
 
-var studentFromView = studentDatabase.GetStudentView(studentId);
+//var studentFromView = studentDatabase.GetStudentView(studentId);
 
 Console.WriteLine();

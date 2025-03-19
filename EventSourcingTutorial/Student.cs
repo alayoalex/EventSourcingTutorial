@@ -1,16 +1,20 @@
 ﻿using EventSourcingTutorial.Events;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 
 namespace EventSourcingTutorial
 {
     public class Student
     {
-        public Guid Id { get; set; }
+        [JsonPropertyName("pk")] public string Pk => $"{Id.ToString()}_view";
+        [JsonPropertyName("sk")] public string Sk => $"{Id.ToString()}_view";
 
+        public Guid Id { get; set; }
         public string FullName { get; set; }
         public string Email { get; set; }
         public List<string> EnrolledCourses { get; set; } = new();

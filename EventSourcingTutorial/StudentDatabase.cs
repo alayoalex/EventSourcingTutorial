@@ -1,49 +1,116 @@
-﻿using EventSourcingTutorial.Events;
+﻿using Amazon;
+using Amazon.DynamoDBv2;
+using Amazon.DynamoDBv2.DocumentModel;
+using Amazon.DynamoDBv2.Model;
+using Amazon.Runtime;
+using EventSourcingTutorial.Events;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Text.Json;
 using System.Threading.Tasks;
 
 namespace EventSourcingTutorial
 {
     public class StudentDatabase
     {
-        private readonly Dictionary<Guid, SortedList<DateTime, Event>> _studentEvents = new();
-        private readonly Dictionary<Guid, Student> _students = new();
+        private readonly IAmazonDynamoDB _amazonDynamoDB = new AmazonDynamoDBClient("zzzzzzzzzzzzzzzzzzzzzzzzz", "xxxxxxxxxxxxxxxxxxxx", RegionEndpoint.USEast1);
+        private const string TableName = "students";
 
-        public void Append(Event @event)
+        private static readonly JsonSerializerOptions SerializerSettings = new JsonSerializerOptions
         {
-            var stream = _studentEvents!.GetValueOrDefault(@event.StreamId, null);
-            if (stream == null) 
-            {
-                _studentEvents[@event.StreamId] = new SortedList<DateTime, Event>();
-            }
+            AllowOutOfOrderMetadataProperties = true,
+        };
+
+        public async Task AppendAsync<T>(T @event) where T : Event
+        {
             @event.CreatedAtUtc = DateTime.UtcNow;
-            _studentEvents[@event.StreamId].Add(@event.CreatedAtUtc, @event);
+            var eventAsJson = JsonSerializer.Serialize<Event>(@event);
+            var itemAsDocument = Document.FromJson(eventAsJson);
+            var itemAsAttributes = itemAsDocument.ToAttributeMap();
 
-            _students[@event.StreamId] = GetStudent(@event.StreamId);
-        }
+            var studentView = await GetStudentAsync(@event.StreamId) ?? new Student();
+            studentView.Apply(@event);
+            var studentAsJson = JsonSerializer.Serialize(studentView);
+            var studentAsDocument = Document.FromJson(studentAsJson);
+            var studentAsAttributes = studentAsDocument.ToAttributeMap();
 
-        public Student? GetStudentView(Guid studentId)
-        {
-            return _students!.GetValueOrDefault(studentId, null);
-        }
-
-        public Student GetStudent(Guid studentId)
-        {
-            if (! _studentEvents.ContainsKey(studentId))
+            var transactionRequest = new TransactWriteItemsRequest
             {
+                TransactItems = new List<TransactWriteItem>
+                {
+                    new TransactWriteItem
+                    {
+                        Put = new Put
+                        {
+                            TableName = TableName,
+                            Item = itemAsAttributes
+                        }
+                    },
+                    new TransactWriteItem
+                    {
+                        Put = new Put
+                        {
+                            TableName = TableName,
+                            Item = studentAsAttributes
+                        }
+                    }
+                }
+            };
+
+            await _amazonDynamoDB.TransactWriteItemsAsync(transactionRequest);
+        }
+
+        public async Task<Student?> GetStudentAsync(Guid studentId)
+        {
+            var request = new GetItemRequest
+            {
+                TableName = TableName,
+                Key = new Dictionary<string, AttributeValue>
+                {
+                    {"pk", new AttributeValue { S = $"{studentId.ToString()}_view" } },
+                    {"sk", new AttributeValue { S = $"{studentId.ToString()}_view" } }
+                }
+            };
+
+            var response = await  _amazonDynamoDB.GetItemAsync(request);
+            if (response.Item == null)
                 return null;
-            }
 
-            var student = new Student();
-            var studentEvents = _studentEvents[studentId];
-            foreach (var studentEvent in studentEvents)
-            {
-                student.Apply(studentEvent.Value);
-            }
+            var itemAsDocument = Document.FromAttributeMap(response.Item);
+            var studentAsJson = itemAsDocument.ToJson();
+            var student = JsonSerializer.Deserialize<Student>(studentAsJson);
             return student;
         }
+
+        /*public async Task<Student?> GetStudentAsync(Guid studentId)
+        {
+            var queryRequest = new QueryRequest
+            {
+                TableName = TableName,
+                KeyConditionExpression = "pk = :v_pk",
+                ExpressionAttributeValues = new Dictionary<string, AttributeValue>
+                {
+                    { ":v_pk", new AttributeValue { S = studentId.ToString() } }
+                }
+            };
+
+            var queryResponse = await _amazonDynamoDB.QueryAsync(queryRequest);
+
+            if (queryResponse.Items.Count == 0)
+                return null;
+
+            var studentEvents = queryResponse.Items.Select(item => Document.FromAttributeMap(item))
+                .Select(document => JsonSerializer.Deserialize<Event>(document.ToJson(), SerializerSettings))
+                .OrderBy(@event => @event!.CreatedAtUtc);
+
+            var student = new Student();
+            foreach (var @event in studentEvents)
+            {
+                student.Apply(@event!);
+            }
+            return student;
+        }*/
     }
 }
